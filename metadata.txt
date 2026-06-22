@@ -3,5 +3,5 @@ name=Navigate to Map Center
 description=Open third-party navigation app to navigate to the map canvas center
 author=OPENGIS.ch
 icon=icon.svg
-version=1.1
+version=1.2
 homepage=https://www.opengis.ch/
