@@ -1,0 +1,25 @@
+name: Build and Release Plugin
+
+on:
+  push:
+    branches:
+      - main # 每次推送到 main 分支时自动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Zip Plugin Files
+        run: zip -j CanvasNavPlugin.zip main.qml metadata.txt
+
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 最新测试版
+          files: CanvasNavPlugin.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
