@@ -65,11 +65,52 @@ Item {
     }
   }
 
+  // 导航确认对话框
+  Dialog {
+    id: navigationConfirmDialog
+    parent: iface.mainWindow().contentItem
+    anchors.centerIn: parent
+    width: Math.min(parent.width * 0.85, 420)
+    modal: true
+    title: qsTr("导航确认")
+    standardButtons: Dialog.Ok | Dialog.Cancel
+
+    property real navLat
+    property real navLng
+    property string navLabel
+
+    Column {
+      width: parent.width
+      spacing: 12
+
+      Label {
+        text: qsTr("目的地地址:")
+        font.bold: true
+      }
+
+      // 使用只读的 TextArea 以便用户可以复制长地址
+      TextArea {
+        width: parent.width
+        readOnly: true
+        text: navigationConfirmDialog.navLabel
+        wrapMode: Text.WordWrap
+        selectByMouse: true
+        background: null
+        implicitHeight: contentHeight
+      }
+    }
+
+    // 当用户点击 "OK" 按钮时触发
+    onAccepted: {
+      launchNavigationApp(navLat, navLng, navLabel)
+    }
+  }
+
   // 辅助函数：用于启动第三方导航应用
   function launchNavigationApp(lat, lng, label) {
     const coordText = lat.toFixed(6) + ', ' + lng.toFixed(6)
     const destinationLabel = label || 'QField'
-
+    mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
     if (Qt.platform.os === 'android') {
       // Android：geo URI，将标签附加到坐标后面
       const geoUrl = 'geo:0,0?q=' + lat + ',' + lng + '(' + encodeURIComponent(destinationLabel) + ')'
@@ -98,37 +139,41 @@ Item {
 
   // 重写核心导航逻辑
   function openNavigation(lat, lng) {
-    if (!wcpluginSettings.apiKey) {
-      launchNavigationApp(lat, lng, "目标点");
-      return;
+    // 如果未配置 Token，直接使用默认标签打开确认对话框
+    if (!wcpluginSettings.apiKey || wcpluginSettings.apiKey === "") {
+      navigationConfirmDialog.navLat = lat
+      navigationConfirmDialog.navLng = lng
+      navigationConfirmDialog.navLabel = "目标点"
+      navigationConfirmDialog.open()
+      return
     }
 
-    // 如果配置了 Token，尝试获取地址
-    var xhr = new XMLHttpRequest();
-    var postStr = { "lon": lng, "lat": lat, "ver": 1 };
-    var url = "https://api.tianditu.gov.cn/geocoder?postStr=" + encodeURIComponent(JSON.stringify(postStr)) + "&type=geocode&tk=" + wcpluginSettings.apiKey;
+    // 如果配置了 Token，则尝试通过逆地理编码获取地址
+    const xhr = new XMLHttpRequest()
+    const postStr = { "lon": lng, "lat": lat, "ver": 1 }
+    const url = "https://api.tianditu.gov.cn/geocoder?postStr=" + encodeURIComponent(JSON.stringify(postStr)) + "&type=geocode&tk=" + wcpluginSettings.apiKey
 
-    xhr.open("GET", url, true);
+    xhr.open("GET", url, true)
     xhr.onreadystatechange = function() {
       if (xhr.readyState === XMLHttpRequest.DONE) {
+        let addressName = "目标点" // 设置回退的默认地址
         try {
-          var response = JSON.parse(xhr.responseText);
-          // 检查 API 是否成功返回地址
-          if (xhr.status === 200 && response && response.status === "0" && response.result) {
-            var addressName = response.result.formatted_address;
-            Clipboard.setText(addressName);
-            mainWindow.displayToast(qsTr("地址已复制: ") + addressName);
-            launchNavigationApp(lat, lng, addressName); // 使用获取到的地址作为标签
-            return;
+          if (xhr.status === 200) {
+            const response = JSON.parse(xhr.responseText)
+            if (response && response.status === "0" && response.result) {
+              addressName = response.result.formatted_address
+            }
           }
-        } catch(e) { launchNavigationApp(lat, lng, "解析天地图逆地理编码响应失败: " + e);
-        console.log("解析天地图逆地理编码响应失败: " + e); }
+        } catch(e) { console.log("解析天地图逆地理编码响应失败: " + e) }
 
-        // 如果请求或解析失败，则回退到默认行为
-        launchNavigationApp(lat, lng, "目标点");
+        // 无论是否成功获取地址，都打开确认对话框
+        navigationConfirmDialog.navLat = lat
+        navigationConfirmDialog.navLng = lng
+        navigationConfirmDialog.navLabel = addressName
+        navigationConfirmDialog.open()
       }
-    };
-    xhr.send();
+    }
+    xhr.send()
   }
 
   Component.onCompleted: {
@@ -161,6 +206,7 @@ Item {
     prefix: "tdt" // Users can type "tdt " to search only with this provider
     delay: 500 // Wait 500ms after user stops typing before searching
     locatorBridge: iface.findItemByObjectName('locatorBridge')
+    parameters: { "apiKey": wcpluginSettings.apiKey }
     source: Qt.resolvedUrl('search.qml') // The background search logic
 
     // This function is called when a user selects a search result
