@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Controls
-import Qt.labs.settings // Import the Qt Settings module
 
 import org.qfield
 import org.qgis
+import QtCore
 import Theme
 
 Item {
@@ -11,11 +11,11 @@ Item {
 
   property var mainWindow: iface.mainWindow()
 
-  // 1. Settings component to persist the API key
+  // 使用 Settings 组件以声明式方式管理插件的持久化配置
   Settings {
-    id: pluginSettings
-    category: "TiandituLocator" // Unique identifier for storage
-    property string apiKey: "" // The property to store the key, will be auto-saved/loaded
+    id: wcpluginSettings
+    category: "TiandituLocator" // 设置的分类，确保唯一性
+    property string apiKey: ""   // 定义 apiKey 属性，默认值为空字符串
   }
 
   // 2. QField's configuration hook. This function is called when the user
@@ -46,8 +46,8 @@ Item {
       TextField {
         id: tokenInput
         width: parent.width
-        placeholderText: qsTr("请在此处粘贴或输入您的密钥")
-        text: pluginSettings.apiKey // Show the currently saved key
+        placeholderText: qsTr("请在此处粘贴或输入您的密钥") // 绑定到 Settings 组件的 apiKey 属性
+        text: wcpluginSettings.apiKey
         echoMode: TextInput.PasswordEchoOnEdit
       }
 
@@ -59,8 +59,9 @@ Item {
     }
 
     onAccepted: {
-      pluginSettings.apiKey = tokenInput.text.trim() // Save the key on "Save" click
-      iface.mainWindow().displayToast(qsTr("✓ 天地图 Token 配置已保存"))
+      // 当对话框确认时，将输入框中的值（去除前后空格）保存到设置中
+      wcpluginSettings.apiKey = tokenInput.text.trim()
+      mainWindow.displayToast(qsTr("✓ 天地图 Token 配置已保存"))
     }
   }
 
@@ -73,25 +74,21 @@ Item {
       // Android：geo URI，将标签附加到坐标后面
       const geoUrl = 'geo:0,0?q=' + lat + ',' + lng + '(' + encodeURIComponent(destinationLabel) + ')'
       if (Qt.openUrlExternally(geoUrl)) {
-        mainWindow.displayToast(qsTr('正在打开导航应用...'))
         return
       }
       // 回退：Google Maps 路线导航 (不支持标签)
       if (Qt.openUrlExternally('google.navigation:q=' + lat + ',' + lng)) {
-        mainWindow.displayToast(qsTr('正在打开导航应用...'))
         return
       }
     } else if (Qt.platform.os === 'ios') {
       // iOS：Apple Maps，daddr 参数同时接受坐标和标签
       const appleMapsUrl = 'maps://?daddr=' + lat + ',' + lng + '&q=' + encodeURIComponent(destinationLabel)
       if (Qt.openUrlExternally(appleMapsUrl)) {
-        mainWindow.displayToast(qsTr('正在打开导航应用...'))
         return
       }
     } else {
       // 桌面或其他平台：Google Maps 网页版 (不支持标签)
       if (Qt.openUrlExternally('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=driving')) {
-        mainWindow.displayToast(qsTr('正在打开导航应用...'))
         return
       }
     }
@@ -101,18 +98,15 @@ Item {
 
   // 重写核心导航逻辑
   function openNavigation(lat, lng) {
-    var currentToken = pluginSettings.apiKey;
-
-    // 如果未配置 Token，直接使用默认标签进行导航
-    if (!currentToken || currentToken === "") {
-      launchNavigationApp(lat, lng, "QField");
+    if (!wcpluginSettings.apiKey) {
+      launchNavigationApp(lat, lng, "目标点");
       return;
     }
 
     // 如果配置了 Token，尝试获取地址
     var xhr = new XMLHttpRequest();
     var postStr = { "lon": lng, "lat": lat, "ver": 1 };
-    var url = "https://api.tianditu.gov.cn/geocoder?postStr=" + encodeURIComponent(JSON.stringify(postStr)) + "&type=geocode&tk=" + currentToken;
+    var url = "https://api.tianditu.gov.cn/geocoder?postStr=" + encodeURIComponent(JSON.stringify(postStr)) + "&type=geocode&tk=" + wcpluginSettings.apiKey;
 
     xhr.open("GET", url, true);
     xhr.onreadystatechange = function() {
@@ -122,15 +116,16 @@ Item {
           // 检查 API 是否成功返回地址
           if (xhr.status === 200 && response && response.status === "0" && response.result) {
             var addressName = response.result.formatted_address;
-            QField.clipboard.text = addressName; // 复制地址到剪贴板
+            Clipboard.setText(addressName);
             mainWindow.displayToast(qsTr("地址已复制: ") + addressName);
             launchNavigationApp(lat, lng, addressName); // 使用获取到的地址作为标签
             return;
           }
-        } catch(e) { console.log("解析天地图逆地理编码响应失败: " + e); }
+        } catch(e) { launchNavigationApp(lat, lng, "解析天地图逆地理编码响应失败: " + e);
+        console.log("解析天地图逆地理编码响应失败: " + e); }
 
         // 如果请求或解析失败，则回退到默认行为
-        launchNavigationApp(lat, lng, "QField");
+        launchNavigationApp(lat, lng, "目标点");
       }
     };
     xhr.send();

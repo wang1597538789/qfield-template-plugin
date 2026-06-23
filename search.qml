@@ -1,22 +1,13 @@
 import QtQuick
-import Qt.labs.settings // Import the Settings module
-import org.qfield
 
 Item {
   signal prepareResult(var details)
   signal fetchResultsEnded()
 
-  // A second Settings component. As long as the 'category' matches the one
-  // in main.qml, it will read from the same persistent storage.
-  Settings {
-    id: bgSettings
-    category: "TiandituLocator"
-    readonly property string apiKey: "" // Read-only is enough here
-  }
-
   function fetchResults(searchString, context, parameters) {
-    // 1. Dynamically get the saved token.
-    var currentToken = bgSettings.apiKey;
+    // 1. 动态获取已保存的 token
+    // 直接从 QField 的全局设置中读取 API key
+    var currentToken = wcpluginSettings.apiKey;
     if (!currentToken || currentToken === "") {
       console.log("Error: Tianditu token is not set. Please configure it in the plugin settings.");
       fetchResultsEnded();
