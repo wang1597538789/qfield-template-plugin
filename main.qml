@@ -10,6 +10,7 @@ Item {
   id: canvasNavPlugin
 
   property var mainWindow: iface.mainWindow()
+  property var positionSource: iface.findItemByObjectName('positionSource')
 
   // 使用 Settings 组件以声明式方式管理插件的持久化配置
   Settings {
@@ -73,11 +74,13 @@ Item {
     width: Math.min(parent.width * 0.85, 420)
     modal: true
     title: qsTr("导航确认")
-    standardButtons: Dialog.Ok | Dialog.Cancel
 
     property real navLat
     property real navLng
     property string navLabel
+    property string navDMS
+    property string navProjected
+    property string navElevation
 
     Column {
       width: parent.width
@@ -98,11 +101,125 @@ Item {
         background: null
         implicitHeight: contentHeight
       }
+
+      Label {
+        text: qsTr("坐标:")
+        font.bold: true
+      }
+
+      // 显示坐标信息，并允许复制
+      TextArea {
+        width: parent.width
+        readOnly: true
+        // 将经纬度保留6位小数并用逗号分隔
+        text: navigationConfirmDialog.navLng.toFixed(6) + ", " + navigationConfirmDialog.navLat.toFixed(6)
+        selectByMouse: true
+        background: null
+        implicitHeight: contentHeight
+      }
+
+      Label {
+        text: qsTr("度分秒坐标:")
+        font.bold: true
+      }
+
+      // 显示度分秒坐标
+      TextArea {
+        width: parent.width
+        readOnly: true
+        text: navigationConfirmDialog.navDMS
+        selectByMouse: true
+        background: null
+        implicitHeight: contentHeight
+      }
+
+      Label {
+        text: qsTr("CGCS2000 (EPSG:4524) 投影坐标:")
+        font.bold: true
+      }
+
+      // 显示投影坐标
+      TextArea {
+        width: parent.width
+        readOnly: true
+        text: navigationConfirmDialog.navProjected
+        selectByMouse: true
+        background: null
+        implicitHeight: contentHeight
+      }
+
+      // 仅当大地高可用时显示
+      Column {
+          width: parent.width
+          spacing: 4
+          visible: navigationConfirmDialog.navElevation !== qsTr("不可用")
+
+          Label {
+            text: qsTr("当前大地高:")
+            font.bold: true
+          }
+
+          TextArea {
+            width: parent.width
+            readOnly: true
+            text: navigationConfirmDialog.navElevation
+            selectByMouse: true
+            background: null
+            implicitHeight: contentHeight
+          }
+      }
     }
 
-    // 当用户点击 "OK" 按钮时触发
-    onAccepted: {
-      launchNavigationApp(navLat, navLng, navLabel)
+    footer: DialogButtonBox {
+      Button {
+        text: qsTr("高德导航")
+        onClicked: {
+          launchAmapNavigation(navigationConfirmDialog.navLat, navigationConfirmDialog.navLng, navigationConfirmDialog.navLabel)
+          navigationConfirmDialog.close()
+        }
+      }
+      Button {
+        text: qsTr("其他导航")
+        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+        onClicked: {
+          launchNavigationApp(navigationConfirmDialog.navLat, navigationConfirmDialog.navLng, navigationConfirmDialog.navLabel)
+          navigationConfirmDialog.close()
+        }
+      }
+      Button {
+        text: qsTr("取消")
+        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+        onClicked: {
+          navigationConfirmDialog.close()
+        }
+      }
+    }
+  }
+
+  // 辅助函数：将十进制度数转换为度分秒格式
+  function toDMS(dd, isLng) {
+    const dir = dd < 0
+        ? isLng ? 'W' : 'S'
+        : isLng ? 'E' : 'N';
+
+    const absDd = Math.abs(dd);
+    const deg = Math.floor(absDd);
+    const min = Math.floor((absDd - deg) * 60);
+    const sec = ((absDd - deg) * 60 - min) * 60;
+
+    const minStr = min < 10 ? "0" + min : min;
+    const secStr = sec < 10 ? "0" + sec.toFixed(2) : sec.toFixed(2);
+    return `${deg}°${minStr}'${secStr}"`;
+    // return `${deg}°${minStr}'${secStr}" ${dir}`;
+  }
+
+  // 辅助函数：用于启动高德导航应用
+  function launchAmapNavigation(lat, lng, label) {
+    const destinationLabel = label || qsTr("来自QField的位置")
+    const uri = `amapuri://route/plan/?dlat=${lat}&dlon=${lon}&dname=${encodeURIComponent(destinationLabel)}&dev=1&t=0`
+    mainWindow.displayToast(qsTr("正在尝试打开高德地图..."))
+    if (!Qt.openUrlExternally(uri)) {
+      mainWindow.displayToast(qsTr("无法打开高德地图，请确认是否已安装。"))
     }
   }
 
@@ -139,38 +256,56 @@ Item {
 
   // 重写核心导航逻辑
   function openNavigation(lat, lng) {
+    // 内部辅助函数，用于计算坐标格式并显示对话框
+    function showDialog(addressName, currentElevation) {
+        // WGS84 度分秒格式计算
+        const latDMS = toDMS(lat, false);
+        const lngDMS = toDMS(lng, true);
+
+        // 投影到 EPSG:4524
+        const wgs84Point = GeometryUtils.point(lng, lat);
+        const projectedPoint = GeometryUtils.reprojectPoint(wgs84Point, CoordinateReferenceSystemUtils.fromDescription("EPSG:4326"), CoordinateReferenceSystemUtils.fromDescription("EPSG:4524"));
+
+        // 填充对话框属性
+        navigationConfirmDialog.navLat = lat;
+        navigationConfirmDialog.navLng = lng;
+        navigationConfirmDialog.navLabel = addressName;
+        navigationConfirmDialog.navDMS = `${lngDMS},${latDMS}`;
+        navigationConfirmDialog.navProjected = `${projectedPoint.x.toFixed(3)}, ${projectedPoint.y.toFixed(3)}`;
+        navigationConfirmDialog.navElevation = currentElevation;
+        navigationConfirmDialog.open();
+    }
+
+    // 获取当前大地高
+    let currentElevationStr = qsTr("不可用");
+    if (positionSource && positionSource.active && positionSource.positionInformation.elevationValid) {
+        const elevation = positionSource.positionInformation.elevation;
+        currentElevationStr = `${elevation.toFixed(2)} ${qsTr("米")}`;
+    }
+
     // 如果未配置 Token，直接使用默认标签打开确认对话框
     if (!wcpluginSettings.apiKey || wcpluginSettings.apiKey === "") {
-      navigationConfirmDialog.navLat = lat
-      navigationConfirmDialog.navLng = lng
-      navigationConfirmDialog.navLabel = "目标点"
-      navigationConfirmDialog.open()
-      return
+      showDialog("目标点", currentElevationStr);
+      return;
     }
 
     // 如果配置了 Token，则尝试通过逆地理编码获取地址
     const xhr = new XMLHttpRequest()
     const postStr = { "lon": lng, "lat": lat, "ver": 1 }
     const url = "https://api.tianditu.gov.cn/geocoder?postStr=" + encodeURIComponent(JSON.stringify(postStr)) + "&type=geocode&tk=" + wcpluginSettings.apiKey
-
     xhr.open("GET", url, true)
     xhr.onreadystatechange = function() {
       if (xhr.readyState === XMLHttpRequest.DONE) {
         let addressName = "目标点" // 设置回退的默认地址
         try {
           if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText)
+            const response = JSON.parse(xhr.responseText);
             if (response && response.status === "0" && response.result) {
-              addressName = response.result.formatted_address
+              addressName = response.result.formatted_address;
             }
           }
-        } catch(e) { console.log("解析天地图逆地理编码响应失败: " + e) }
-
-        // 无论是否成功获取地址，都打开确认对话框
-        navigationConfirmDialog.navLat = lat
-        navigationConfirmDialog.navLng = lng
-        navigationConfirmDialog.navLabel = addressName
-        navigationConfirmDialog.open()
+        } catch(e) { console.log("解析天地图逆地理编码响应失败: " + e); }
+        showDialog(addressName, currentElevationStr);
       }
     }
     xhr.send()

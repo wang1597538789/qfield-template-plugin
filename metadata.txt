@@ -3,4 +3,4 @@ name=Navigate to Map Center
 description=Open third-party navigation app to navigate to the map canvas center
 author=wc
 icon=icon.svg
-version=1.5
+version=1.6
