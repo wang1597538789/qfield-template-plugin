@@ -227,26 +227,31 @@ Item {
   function launchNavigationApp(lat, lng, label) {
     const coordText = lat.toFixed(6) + ', ' + lng.toFixed(6)
     const destinationLabel = label || 'QField'
-    mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
+    
     if (Qt.platform.os === 'android') {
       // Android：geo URI，将标签附加到坐标后面
       const geoUrl = 'geo:0,0?q=' + lat + ',' + lng + '(' + encodeURIComponent(destinationLabel) + ')'
       if (Qt.openUrlExternally(geoUrl)) {
+        mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
         return
       }
       // 回退：Google Maps 路线导航 (不支持标签)
       if (Qt.openUrlExternally('google.navigation:q=' + lat + ',' + lng)) {
+        mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
         return
       }
     } else if (Qt.platform.os === 'ios') {
       // iOS：Apple Maps，daddr 参数同时接受坐标和标签
       const appleMapsUrl = 'maps://?daddr=' + lat + ',' + lng + '&q=' + encodeURIComponent(destinationLabel)
       if (Qt.openUrlExternally(appleMapsUrl)) {
+        mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
         return
       }
     } else {
-      // 桌面或其他平台：Google Maps 网页版 (不支持标签)
-      if (Qt.openUrlExternally('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=driving')) {
+      // 桌面或其他平台：高德地图网页版
+      const amapWebUrl = `https://uri.amap.com/navigation?to=${lng},${lat},${encodeURIComponent(destinationLabel)}&mode=driving&coordinate=wgs84&src=qfield`
+      if (Qt.openUrlExternally(amapWebUrl)) {
+        mainWindow.displayToast(qsTr("马上导航到%1").arg(destinationLabel))
         return
       }
     }
