@@ -216,7 +216,7 @@ Item {
   // 辅助函数：用于启动高德导航应用
   function launchAmapNavigation(lat, lng, label) {
     const destinationLabel = label || qsTr("来自QField的位置")
-    const uri = `amapuri://route/plan/?dlat=${lat}&dlon=${lon}&dname=${encodeURIComponent(destinationLabel)}&dev=1&t=0`
+    const uri = `amapuri://route/plan/?dlat=${lat}&dlon=${lng}&dname=${encodeURIComponent(destinationLabel)}&dev=1&t=0`
     mainWindow.displayToast(qsTr("正在尝试打开高德地图..."))
     if (!Qt.openUrlExternally(uri)) {
       mainWindow.displayToast(qsTr("无法打开高德地图，请确认是否已安装。"))
