@@ -1,9 +1,9 @@
 import QtQuick
 import QtQuick.Controls
-
+import QtQuick.Layouts
+import QtCore
 import org.qfield
 import org.qgis
-import QtCore
 import Theme
 
 Item {
@@ -11,6 +11,7 @@ Item {
 
   property var mainWindow: iface.mainWindow()
   property var positionSource: iface.findItemByObjectName('positionSource')
+  property var mapCanvas: iface.mapCanvas()
 
   // 使用 Settings 组件以声明式方式管理插件的持久化配置
   Settings {
@@ -318,6 +319,11 @@ Item {
 
   Component.onCompleted: {
     iface.addItemToPluginsToolbar(navigationButton)
+    tdtFilter.locatorBridge.registerQFieldLocatorFilter(tdtFilter);
+  }
+
+  Component.onDestruction: {
+    tdtFilter.locatorBridge.deregisterQFieldLocatorFilter(tdtFilter);
   }
 
   QfToolButton {
@@ -342,14 +348,17 @@ Item {
   QFieldLocatorFilter {
     id: tdtFilter
     name: "tianditu_locator"
-    displayName: qsTr("天地图地址搜索")
+    displayName: "天地图地址搜索"
     prefix: "tdt" // Users can type "tdt " to search only with this provider
-    delay: 500 // Wait 500ms after user stops typing before searching
+    delay: 1000 // Wait 500ms after user stops typing before searching
     locatorBridge: iface.findItemByObjectName('locatorBridge')
     parameters: { "apiKey": wcpluginSettings.apiKey }
     source: Qt.resolvedUrl('search.qml') // The background search logic
-
-    // This function is called when a user selects a search result
+    Component.onCompleted: {
+      if (tdtFilter.description !== undefined) {
+        tdtFilter.description = "Returns search results."
+      }
+    }
     function triggerResult(result) {
       var wgsPoint = GeometryUtils.point(result.userData.lon, result.userData.lat);
       var projectedPoint = GeometryUtils.project(wgsPoint, "EPSG:4326", qgisProject.crs);
@@ -359,6 +368,7 @@ Item {
       if (geometryHighlighter) { geometryHighlighter.flashGeometry(wgsPoint, "EPSG:4326"); }
 
       iface.mainWindow().displayToast(qsTr("已定位至: ") + result.displayString);
+      
     }
   }
 }
