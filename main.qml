@@ -360,15 +360,36 @@ Item {
       }
     }
     function triggerResult(result) {
-      var wgsPoint = GeometryUtils.point(result.userData.lon, result.userData.lat);
-      var projectedPoint = GeometryUtils.project(wgsPoint, "EPSG:4326", qgisProject.crs);
-      iface.mapCanvas().center = projectedPoint;
+      if (result.userData.type === Qgis.GeometryType.Point) {
+        const centroid = GeometryUtils.reprojectPoint(
+          GeometryUtils.centroid(result.userData),
+          CoordinateReferenceSystemUtils.fromDescription("EPSG:4326"),
+          mapCanvas.mapSettings.destinationCrs
+        )
+        mapCanvas.mapSettings.setCenter(centroid, true);
+      } else {
+        const extent = GeometryUtils.reprojectRectangle(
+          GeometryUtils.boundingBox(result.userData),
+          CoordinateReferenceSystemUtils.fromDescription("EPSG:4326"),
+          mapCanvas.mapSettings.destinationCrs
+        )
+        mapCanvas.mapSettings.setExtent(extent, true);
+      }
 
-      var geometryHighlighter = iface.findItemByObjectName('geometryHighlighter');
-      if (geometryHighlighter) { geometryHighlighter.flashGeometry(wgsPoint, "EPSG:4326"); }
+      locatorBridge.geometryHighlighter.qgsGeometry = result.userData;
+      locatorBridge.geometryHighlighter.crs = CoordinateReferenceSystemUtils.fromDescription("EPSG:4326");
+    }
 
-      iface.mainWindow().displayToast(qsTr("已定位至: ") + result.displayString);
-      
+    function triggerResultFromAction(result, actionId) {
+      if (actionId === 1) {
+        let navigation = iface.findItemByObjectName('navigation')
+        const centroid = GeometryUtils.reprojectPoint(
+          GeometryUtils.centroid(result.userData),
+          CoordinateReferenceSystemUtils.fromDescription("EPSG:4326"),
+          mapCanvas.mapSettings.destinationCrs
+        )
+        navigation.destination = centroid
+      }
     }
   }
 }
