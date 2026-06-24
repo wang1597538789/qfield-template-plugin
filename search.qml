@@ -12,7 +12,7 @@ Item {
       fetchResultsEnded();
       return;
     }
-    
+    let viewbox = GeometryUtils.reprojectRectangle(context.targetExtent, context.targetExtentCrs, CoordinateReferenceSystemUtils.fromDescription("EPSG:4326")).toString().replace(" : ", ",")
     let request = new XMLHttpRequest();
     request.onreadystatechange = function() {
       if (request.readyState === XMLHttpRequest.DONE) {
@@ -70,10 +70,12 @@ Item {
         fetchResultsEnded();
       }
     }
+    
 
     let searchParams = {
         "keyWord": string,
-        "mapBound": "-180,-90,180,90", // Global extent
+        "mapBound": viewbox,
+        // "mapBound": "-180,-90,180,90", // Global extent
         "level": 18, // Fixed high level as per example
         "queryType": 1, // 1: Global/Administrative search
         "start": 0,
